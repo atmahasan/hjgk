@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WhiteDNS Panel on Render</title>
+  <style>
+    body { font-family: Tahoma, sans-serif; background: #0b1120; color: #f1f5f9; margin: 0; padding: 20px; display: flex; justify-content: center; }
+    .container { background: #1e293b; max-width: 580px; width: 100%; padding: 24px; border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid #334155; }
+    h2 { margin-top: 0; color: #38bdf8; font-size: 1.2rem; text-align: center; }
+    label { display: block; margin-top: 14px; font-size: 0.86rem; color: #cbd5e1; }
+    .row { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+    input, select, textarea { width: 100%; padding: 10px; margin-top: 6px; border-radius: 8px; border: 1px solid #475569; background: #0f172a; color: #38bdf8; box-sizing: border-box; font-family: monospace; direction: ltr; text-align: left; }
+    .row input { margin-top: 0; }
+    .btn { width: 100%; padding: 12px; margin-top: 12px; border: none; border-radius: 8px; background: #0284c7; color: #fff; font-weight: bold; cursor: pointer; font-size: 0.9rem; }
+    .btn:hover { background: #0369a1; }
+    .btn-small { width: auto; white-space: nowrap; margin-top: 0; padding: 10px 14px; background: #10b981; }
+    .btn-small:hover { background: #059669; }
+    .btn-secondary { background: #475569; margin-top: 8px; }
+    .output-box { margin-top: 20px; padding-top: 16px; border-top: 1px solid #334155; }
+    .ok-badge { background: #064e3b; border: 1px solid #10b981; color: #a7f3d0; padding: 10px; border-radius: 8px; font-size: 0.82rem; line-height: 1.6; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>پنل کانفیگ WhiteDNS روی Render</h2>
+
+    <div class="ok-badge">
+      ✅ کلید رمزنگاری و لینک اشتراک Base64 بدون خطای فرمت برای WhiteDNS آماده است.
+    </div>
+
+    <label>نام پروفایل (Profile Name):</label>
+    <input type="text" id="name" value="CottenDNS-Render" oninput="generateConfig()">
+
+    <label>دامنه تونل (Domain):</label>
+    <input type="text" id="domain" value="ns1.whitedns.site" oninput="generateConfig()">
+
+    <label>کلید رمزنگاری (Encryption Key - 256bit):</label>
+    <div class="row">
+      <input type="text" id="key" oninput="generateConfig()">
+      <button class="btn btn-small" onclick="generateNewKey()">کلید جدید 🎲</button>
+    </div>
+
+    <label>لیست DNS Resolverها:</label>
+    <textarea id="resolvers" rows="4" oninput="generateConfig()">8.8.8.8
+8.8.4.4
+1.1.1.1
+1.0.0.1
+178.22.122.100</textarea>
+
+    <label>موتور تونل (Tunnel Mode):</label>
+    <select id="mode" onchange="generateConfig()">
+      <option value="cottenmax">CottenMax (Beta - پرسرعت)</option>
+      <option value="legacy">Normal (Legacy)</option>
+    </select>
+
+    <div class="output-box">
+      <label>۱. لینک مستقیم پروفایل (برای Import در اپ WhiteDNS):</label>
+      <textarea id="uriOutput" rows="3" readonly></textarea>
+      <button class="btn" onclick="copyText('uriOutput')">کپی لینک مستقیم</button>
+
+      <label>۲. متن Base64 استاندارد (برای فایل sub.txt):</label>
+      <textarea id="b64Output" rows="3" readonly></textarea>
+      <button class="btn btn-secondary" onclick="downloadSub()">دانلود فایل sub.txt</button>
+
+      <label>۳. فایل کامل تنظیمات (client_config.toml):</label>
+      <textarea id="tomlOutput" rows="5" readonly></textarea>
+      <button class="btn btn-secondary" onclick="downloadToml()">دانلود client_config.toml</button>
+    </div>
+  </div>
+
+  <script>
+    function createRandomHexKey(bytes = 32) {
+      const arr = new Uint8Array(bytes);
+      window.crypto.getRandomValues(arr);
+      return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    function generateNewKey() {
+      document.getElementById('key').value = createRandomHexKey(32);
+      generateConfig();
+    }
+
+    function getCleanResolvers() {
+      return document.getElementById('resolvers').value
+        .split(/\r?\n|,/)
+        .map(s => s.trim())
+        .filter(Boolean);
+    }
+
+    function generateConfig() {
+      const name = document.getElementById('name').value.trim() || 'CottenDNS-Render';
+      const domain = document.getElementById('domain').value.trim() || 'ns1.whitedns.site';
+      const key = document.getElementById('key').value.trim();
+      const mode = document.getElementById('mode').value;
+      const resolverCsv = getCleanResolvers().join(',');
+
+      const params = new URLSearchParams({
+        engine: 'cottendns',
+        domain: domain,
+        key: key,
+        method: '1',
+        mode: mode,
+        transport: 'auto',
+        resolvers: resolverCsv,
+        dns: resolverCsv
+      });
+
+      const uri = `stormdns://${encodeURIComponent(key)}@${domain}:53?${params.toString()}#${encodeURIComponent(name)}`;
+      
+      // تولید Base64 کاملاً استاندارد و بدون خطا با TextEncoder
+      const utf8Bytes = new TextEncoder().encode(uri);
+      const b64Sub = btoa(String.fromCharCode(...utf8Bytes));
+
+      const toml = `DOMAINS = ["${domain}"]
+DATA_ENCRYPTION_METHOD = 1
+ENCRYPTION_KEY = "${key}"
+PROTOCOL_TYPE = "SOCKS5"
+LISTEN_IP = "127.0.0.1"
+LISTEN_PORT = 18000
+TUNNEL_MODE = "${mode}"
+RESOLVERS = [${getCleanResolvers().map(r => `"${r}"`).join(', ')}]`;
+
+      document.getElementById('uriOutput').value = uri;
+      document.getElementById('b64Output').value = b64Sub;
+      document.getElementById('tomlOutput').value = toml;
+    }
+
+    function copyText(id) {
+      const el = document.getElementById(id);
+      el.select();
+      navigator.clipboard.writeText(el.value);
+      alert('کپی شد!');
+    }
+
+    function downloadFile(filename, content) {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([content], {type: 'text/plain;charset=utf-8'}));
+      a.download = filename;
+      a.click();
+    }
+
+    function downloadSub() { downloadFile('sub.txt', document.getElementById('b64Output').value); }
+    function downloadToml() { downloadFile('client_config.toml', document.getElementById('tomlOutput').value); }
+
+    window.onload = generateNewKey;
+  </script>
+</body>
+</html>
